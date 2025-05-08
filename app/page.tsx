@@ -19,7 +19,7 @@ const flashingTimerStyle = `
   .flashing-timer {
     animation: flash 1s steps(2, start) infinite;
     border-radius: 8px;
-    padding: 0 0.5em;
+    /* padding removed from here */
     transition: opacity 0.2s;
   }
 `;
@@ -49,11 +49,31 @@ export default function Timeboxer() {
 
   // Audio for notification (using downloadable WAV file)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   // Initialize audio element with the downloadable file on mount
   useEffect(() => {
     audioRef.current = new Audio('/timer-end.wav');
   }, []);
+
+  // Function to unlock audio on iOS (must be called from a user gesture)
+  const unlockAudio = () => {
+    if (audioRef.current && !audioUnlocked) {
+      audioRef.current.muted = true;
+      audioRef.current.play()
+        .then(() => {
+          audioRef.current?.pause();
+          audioRef.current!.currentTime = 0;
+          audioRef.current.muted = false;
+          setAudioUnlocked(true);
+        })
+        .catch(() => {
+          audioRef.current!.muted = false;
+          // Ignore errors, as this is just to unlock
+        });
+    }
+  };
+
 
   // Timer logic
   useEffect(() => {
@@ -245,34 +265,68 @@ export default function Timeboxer() {
                           <SheetDescription>Customize the timer duration for each participant</SheetDescription>
                         </SheetHeader>
                         <div className="py-6 space-y-4">
-                          <div className="flex gap-2 items-end">
-                            <div>
+                          <div className="flex gap-3 items-end justify-center">
+                            <div className="flex flex-col items-center">
                               <Label htmlFor="custom-minutes">Minutes</Label>
-                              <Input
-                                id="custom-minutes"
-                                type="number"
-                                min="0"
-                                max="60"
-                                value={timerMinutes}
-                                onChange={(e) => {
-                                  const val = Math.max(0, Math.min(60, Number(e.target.value)));
-                                  setTimerMinutes(val);
-                                }}
-                              />
+                              <div className="flex flex-col items-center">
+                                <button
+                                  aria-label="Increase minutes"
+                                  type="button"
+                                  className="px-2 py-1 text-lg rounded bg-muted mb-1"
+                                  onClick={() => setTimerMinutes(m => Math.min(60, m + 1))}
+                                  tabIndex={-1}
+                                >▲</button>
+                                <Input
+                                  id="custom-minutes"
+                                  type="number"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  min="0"
+                                  max="60"
+                                  value={timerMinutes}
+                                  onChange={e => setTimerMinutes(Math.max(0, Math.min(60, Number(e.target.value))))}
+                                  className="w-16 text-center text-lg"
+                                  autoFocus
+                                />
+                                <button
+                                  aria-label="Decrease minutes"
+                                  type="button"
+                                  className="px-2 py-1 text-lg rounded bg-muted mt-1"
+                                  onClick={() => setTimerMinutes(m => Math.max(0, m - 1))}
+                                  tabIndex={-1}
+                                >▼</button>
+                              </div>
                             </div>
-                            <div>
+                            <span className="text-2xl font-bold pb-4">:</span>
+                            <div className="flex flex-col items-center">
                               <Label htmlFor="custom-seconds">Seconds</Label>
-                              <Input
-                                id="custom-seconds"
-                                type="number"
-                                min="0"
-                                max="59"
-                                value={timerSeconds}
-                                onChange={(e) => {
-                                  const val = Math.max(0, Math.min(59, Number(e.target.value)));
-                                  setTimerSeconds(val);
-                                }}
-                              />
+                              <div className="flex flex-col items-center">
+                                <button
+                                  aria-label="Increase seconds"
+                                  type="button"
+                                  className="px-2 py-1 text-lg rounded bg-muted mb-1"
+                                  onClick={() => setTimerSeconds(s => s < 59 ? s + 1 : 0)}
+                                  tabIndex={-1}
+                                >▲</button>
+                                <Input
+                                  id="custom-seconds"
+                                  type="number"
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  min="0"
+                                  max="59"
+                                  value={timerSeconds}
+                                  onChange={e => setTimerSeconds(Math.max(0, Math.min(59, Number(e.target.value))))}
+                                  className="w-16 text-center text-lg"
+                                />
+                                <button
+                                  aria-label="Decrease seconds"
+                                  type="button"
+                                  className="px-2 py-1 text-lg rounded bg-muted mt-1"
+                                  onClick={() => setTimerSeconds(s => s > 0 ? s - 1 : 59)}
+                                  tabIndex={-1}
+                                >▼</button>
+                              </div>
                             </div>
                           </div>
                           <Button onClick={() => {
@@ -314,14 +368,22 @@ export default function Timeboxer() {
                   <div className="space-y-4">
                     <div className="flex justify-center items-center gap-2">
                       <Clock className="text-muted-foreground" />
-                      <span className={`text-4xl font-mono font-semibold${isFlashing ? ' flashing-timer' : ''}`}>{formatTime(timeRemaining)}</span>
+                      <span
+                        className={`text-4xl font-mono font-semibold${isFlashing ? ' flashing-timer' : ''}`}
+                        style={{ minWidth: '6ch', display: 'inline-block', textAlign: 'center', padding: '0 0.5em' }}
+                      >
+                        {formatTime(timeRemaining)}
+                      </span>
                     </div>
 
                     {/* Timer Controls */}
                     <div className="flex justify-center gap-2">
                       <Button
                         variant={isTimerRunning ? "outline" : "default"}
-                        onClick={() => setIsTimerRunning(true)}
+                        onClick={() => {
+                          unlockAudio();
+                          setIsTimerRunning(true);
+                        }}
                         disabled={isTimerRunning}
                       >
                         <Play className="mr-1 h-4 w-4" /> Start
@@ -370,7 +432,13 @@ export default function Timeboxer() {
         <CardFooter className="flex justify-between">
           {!isSessionStarted ? (
             <>
-              <Button variant="outline" onClick={() => setParticipants([])}>
+              <Button variant="outline" onClick={() => {
+                setParticipants([]);
+                setCustomTimer(null);
+                setTimerMinutes(1);
+                setTimerSeconds(0);
+                setTimeRemaining(60);
+              }}>
                 Clear All
               </Button>
               <Button onClick={handleStartSession} disabled={participants.length === 0}>
