@@ -34,7 +34,6 @@ yarn-error.log*
 /.vscode/
 
 # Lock files (optional, keep only one preferred)
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
