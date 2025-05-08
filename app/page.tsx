@@ -10,7 +10,21 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, Play, Pause, SkipForward, Settings, X, Plus } from "lucide-react"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
-export default function HackathonDemoTool() {
+// Flashing timer CSS (opacity only)
+const flashingTimerStyle = `
+  @keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  .flashing-timer {
+    animation: flash 1s steps(2, start) infinite;
+    border-radius: 8px;
+    padding: 0 0.5em;
+    transition: opacity 0.2s;
+  }
+`;
+
+export default function Timeboxer() {
   // Participant management
   const [participantName, setParticipantName] = useState("")
   const [participants, setParticipants] = useState<string[]>([])
@@ -22,17 +36,24 @@ export default function HackathonDemoTool() {
   const [isCompleted, setIsCompleted] = useState(false)
 
   // Timer settings and state
-  const [timerDuration, setTimerDuration] = useState(10)
-  const [timeRemaining, setTimeRemaining] = useState(timerDuration * 60)
+  const [timerMinutes, setTimerMinutes] = useState(1)
+  const [timerSeconds, setTimerSeconds] = useState(0)
+  const [timeRemaining, setTimeRemaining] = useState(60)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [isFlashing, setIsFlashing] = useState(false); // For flashing timer
+  const [customTimer, setCustomTimer] = useState<{minutes: number, seconds: number} | null>(null);
+  const [isCustomSheetOpen, setIsCustomSheetOpen] = useState(false);
 
-  // Audio for notification
+  // Helper for total duration in seconds
+  const getTotalDuration = () => timerMinutes * 60 + timerSeconds;
+
+  // Audio for notification (using downloadable WAV file)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Initialize audio on component mount
+  // Initialize audio element with the downloadable file on mount
   useEffect(() => {
-    audioRef.current = new Audio("/notification.mp3")
-  }, [])
+    audioRef.current = new Audio('/timer-end.wav');
+  }, []);
 
   // Timer logic
   useEffect(() => {
@@ -44,10 +65,14 @@ export default function HackathonDemoTool() {
       }, 1000)
     } else if (timeRemaining === 0 && isTimerRunning) {
       setIsTimerRunning(false)
-      // Play notification sound
+      // Play notification sound from downloadable file
       if (audioRef.current) {
-        audioRef.current.play().catch((error) => console.error("Error playing audio:", error))
+        audioRef.current.currentTime = 0; // rewind to start
+        audioRef.current.play().catch((error) => console.error("Error playing audio:", error));
       }
+      // Start flashing effect
+      setIsFlashing(true);
+      setTimeout(() => setIsFlashing(false), 5000);
     }
 
     return () => {
@@ -103,7 +128,7 @@ export default function HackathonDemoTool() {
     setRemainingParticipants(newRemaining)
 
     // Reset timer
-    setTimeRemaining(timerDuration * 60)
+    setTimeRemaining(getTotalDuration())
     setIsTimerRunning(false)
   }
 
@@ -118,22 +143,24 @@ export default function HackathonDemoTool() {
     setIsCompleted(false)
     setCurrentParticipant(null)
     setIsTimerRunning(false)
-    setTimeRemaining(timerDuration * 60)
+    setTimeRemaining(getTotalDuration())
   }
 
   // Update timer duration and reset timer
-  const handleTimerDurationChange = (minutes: number) => {
-    setTimerDuration(minutes)
-    setTimeRemaining(minutes * 60)
+  const handleTimerDurationChange = (minutes: number, seconds: number) => {
+    setTimerMinutes(minutes)
+    setTimerSeconds(seconds)
+    setTimeRemaining(minutes * 60 + seconds)
   }
 
   return (
     <div className="container mx-auto py-8 px-4">
+      <style>{flashingTimerStyle}</style>
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
-          <CardTitle className="text-2xl">Hackathon Demo Session</CardTitle>
+          <CardTitle className="text-2xl">Timeboxer</CardTitle>
           <CardDescription>
-            Manage your hackathon demo sessions with random participant selection and a timer
+            Add participants and timebox their turns. Each person will get a set time for their activity, and the timer will notify you when their time is up.
           </CardDescription>
         </CardHeader>
 
@@ -184,43 +211,75 @@ export default function HackathonDemoTool() {
 
                 {/* Timer Settings */}
                 <div className="space-y-2">
-                  <Label>Timer Duration (minutes)</Label>
-                  <div className="flex gap-2">
-                    {[5, 10, 15, 20].map((mins) => (
+                  <Label>Timer Presets (min)</Label>
+                  <div className="flex gap-3 items-end">
+                    {[1, 2, 3, 5].map((mins) => (
                       <Button
                         key={mins}
-                        variant={timerDuration === mins ? "default" : "outline"}
+                        variant={timerMinutes === mins && timerSeconds === 0 ? "default" : "outline"}
                         size="sm"
-                        onClick={() => handleTimerDurationChange(mins)}
+                        onClick={() => handleTimerDurationChange(mins, 0)}
                       >
                         {mins}
                       </Button>
                     ))}
-
-                    <Sheet>
-                      <SheetTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex items-center gap-1">
-                          <Settings size={14} /> Custom
-                        </Button>
-                      </SheetTrigger>
+                    {customTimer && (
+                      <Button
+                        variant={timerMinutes === customTimer.minutes && timerSeconds === customTimer.seconds ? "default" : "outline"}
+                        size="sm"
+                        className="flex items-center gap-1"
+                        onClick={() => setIsCustomSheetOpen(true)}
+                      >
+                        <Settings size={14} /> {customTimer.minutes}:{customTimer.seconds.toString().padStart(2, "0")}
+                      </Button>
+                    )}
+                    {!customTimer && (
+                      <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => setIsCustomSheetOpen(true)}>
+                        <Settings size={14} /> Custom
+                      </Button>
+                    )}
+                    <Sheet open={isCustomSheetOpen} onOpenChange={setIsCustomSheetOpen}>
                       <SheetContent>
                         <SheetHeader>
                           <SheetTitle>Timer Settings</SheetTitle>
                           <SheetDescription>Customize the timer duration for each participant</SheetDescription>
                         </SheetHeader>
                         <div className="py-6 space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="custom-duration">Duration (minutes)</Label>
-                            <Input
-                              id="custom-duration"
-                              type="number"
-                              min="1"
-                              max="60"
-                              value={timerDuration}
-                              onChange={(e) => handleTimerDurationChange(Number.parseInt(e.target.value) || 10)}
-                            />
+                          <div className="flex gap-2 items-end">
+                            <div>
+                              <Label htmlFor="custom-minutes">Minutes</Label>
+                              <Input
+                                id="custom-minutes"
+                                type="number"
+                                min="0"
+                                max="60"
+                                value={timerMinutes}
+                                onChange={(e) => {
+                                  const val = Math.max(0, Math.min(60, Number(e.target.value)));
+                                  setTimerMinutes(val);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="custom-seconds">Seconds</Label>
+                              <Input
+                                id="custom-seconds"
+                                type="number"
+                                min="0"
+                                max="59"
+                                value={timerSeconds}
+                                onChange={(e) => {
+                                  const val = Math.max(0, Math.min(59, Number(e.target.value)));
+                                  setTimerSeconds(val);
+                                }}
+                              />
+                            </div>
                           </div>
-                          <Button onClick={() => handleTimerDurationChange(timerDuration)} className="w-full">
+                          <Button onClick={() => {
+                            setCustomTimer({minutes: timerMinutes, seconds: timerSeconds});
+                            handleTimerDurationChange(timerMinutes, timerSeconds);
+                            setIsCustomSheetOpen(false);
+                          }} className="w-full">
                             Apply
                           </Button>
                         </div>
@@ -232,11 +291,11 @@ export default function HackathonDemoTool() {
             </>
           ) : (
             <>
-              {/* Demo Session View */}
+              {/* Session View */}
               {isCompleted ? (
                 <div className="text-center py-8 space-y-4">
                   <h3 className="text-xl font-semibold">Session Completed!</h3>
-                  <p className="text-muted-foreground">All participants have presented their demos</p>
+                  <p className="text-muted-foreground">All participants have completed their turns.</p>
                   <Button onClick={handleReset} className="mt-4">
                     Start New Session
                   </Button>
@@ -245,7 +304,7 @@ export default function HackathonDemoTool() {
                 <>
                   {/* Current Participant */}
                   <div className="text-center space-y-2">
-                    <h3 className="text-lg font-medium text-muted-foreground">Current Presenter</h3>
+                    <h3 className="text-lg font-medium text-muted-foreground">Current Participant</h3>
                     <h2 className="text-3xl font-bold">{currentParticipant}</h2>
                   </div>
 
@@ -255,7 +314,7 @@ export default function HackathonDemoTool() {
                   <div className="space-y-4">
                     <div className="flex justify-center items-center gap-2">
                       <Clock className="text-muted-foreground" />
-                      <span className="text-4xl font-mono font-semibold">{formatTime(timeRemaining)}</span>
+                      <span className={`text-4xl font-mono font-semibold${isFlashing ? ' flashing-timer' : ''}`}>{formatTime(timeRemaining)}</span>
                     </div>
 
                     {/* Timer Controls */}
@@ -315,7 +374,7 @@ export default function HackathonDemoTool() {
                 Clear All
               </Button>
               <Button onClick={handleStartSession} disabled={participants.length === 0}>
-                Start Demo Session
+                Start Session
               </Button>
             </>
           ) : !isCompleted ? (
